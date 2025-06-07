@@ -23,6 +23,12 @@ import subprocess
 import shutil
 import chardet
 import time
+# utils_csv: novas rotinas de detecção
+from utils_csv import (
+    detectar_encoding_robusto,
+    detectar_separador_automatico,
+    campos_similares_flex,
+)
 
 # Auto-instalação de dependências
 def instalar_dependencias():
@@ -838,29 +844,11 @@ class ValidadorLogisticoOtimizado:
             
         except Exception as e:
             return [f"Erro ao validar: {e}"]
-            
+
     def _campos_similares(self, campo1: str, campo2: str) -> bool:
-        """Verifica se dois campos são similares (possível inconsistência de nomenclatura)"""
-        # Remove espaços e converte para minúsculas
-        c1 = re.sub(r'\s+', '', campo1.lower())
-        c2 = re.sub(r'\s+', '', campo2.lower())
-        
-        # Verifica se são iguais sem espaços
-        if c1 == c2:
-            return True
-            
-        # Verifica outras variações comuns
-        variações = [
-            (r'[áàâã]', 'a'), (r'[éèê]', 'e'), (r'[íì]', 'i'),
-            (r'[óòôõ]', 'o'), (r'[úù]', 'u'), (r'ç', 'c')
-        ]
-        
-        for padrao, substituto in variações:
-            c1 = re.sub(padrao, substituto, c1)
-            c2 = re.sub(padrao, substituto, c2)
-        
-        return c1 == c2
-        
+        """Comparação flexível usando utils_csv"""
+        return campos_similares_flex(campo1, campo2)
+
     def _encontrar_arquivo_original(self, diretorio: Path, base: str, arquivo_csv: str) -> Optional[Path]:
         """Encontra arquivo original da base"""
         # Estrutura 1: BASE-arquivo.csv
@@ -904,7 +892,9 @@ class ValidadorLogisticoOtimizado:
                 encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
             
             # Lê arquivo ilhas
-            df = pd.read_csv(arquivo_ilhas, encoding=encoding)
+            encoding = detectar_encoding_robusto(arquivo_ilhas)
+            sep = detectar_separador_automatico(arquivo_ilhas, encoding)
+            df = pd.read_csv(arquivo_ilhas, encoding=encoding, sep=sep)
             
             # Cria vazao-ilhas com estrutura específica
             if 'VazaoMaxima(p95)' in df.columns:
@@ -1006,8 +996,10 @@ class ValidadorLogisticoOtimizado:
             with open(arquivo_path, 'rb') as f:
                 raw_data = f.read(1024)
                 encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
-            
-            df = pd.read_csv(arquivo_path, encoding=encoding)
+
+            encoding = detectar_encoding_robusto(arquivo_path)
+            sep = detectar_separador_automatico(arquivo_path, encoding)
+            df = pd.read_csv(arquivo_path, encoding=encoding, sep=sep)
             
             stats = {
                 'total_registros': len(df),
@@ -1084,12 +1076,12 @@ class ValidadorLogisticoOtimizado:
                 
                 if arquivo_path.exists():
                     try:
-                        # Detecta encoding
-                        with open(arquivo_path, 'rb') as f:
-                            raw_data = f.read(1024)
-                            encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
-                        
-                        df = pd.read_csv(arquivo_path, encoding=encoding, nrows=0)
+                        # Detecta encoding + separador de forma robusta
+                        encoding = detectar_encoding_robusto(arquivo_path)
+                        sep = detectar_separador_automatico(arquivo_path, encoding)
+
+                        # Lê apenas o cabeçalho
+                        df = pd.read_csv(arquivo_path, encoding=encoding, sep=sep, nrows=0)
                         
                         if arquivo_csv not in campos_por_arquivo:
                             campos_por_arquivo[arquivo_csv] = {}
@@ -1265,8 +1257,10 @@ class ValidadorLogisticoOtimizado:
                                     with open(arquivo_path, 'rb') as f:
                                         raw_data = f.read(1024)
                                         encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
-                                    
-                                    df = pd.read_csv(arquivo_path, encoding=encoding, nrows=0)
+
+                                    encoding = detectar_encoding_robusto(arquivo_path)
+                                    sep = detectar_separador_automatico(arquivo_path, encoding)
+                                    df = pd.read_csv(arquivo_path, encoding=encoding, sep=sep, nrows=0)
                                     if campo in df.columns:
                                         tem_campo = "✅"
                                     else:
